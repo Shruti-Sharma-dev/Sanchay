@@ -1,44 +1,72 @@
 import User from "../models/User.js";
-import bcrypt from "bcryptjs";
+
 import jwt from "jsonwebtoken";
 
 // Signup
-export const registerUser = async (req, res) => {
-  const { name, email, password, role } = req.body;
+export const completeProfile = async (req, res) => {
+  const { name, phone, role, pincode, address, businessName, businessLicense } = req.body;
+
   try {
-    const userExists = await User.findOne({ email });
-    if (userExists) return res.status(400).json({ msg: "User already exists" });
+    // Check if user already exists
+    let user = await User.findOne({ phone });
 
-    const salt = await bcrypt.genSalt(10);
-    const hashed = await bcrypt.hash(password, salt);
+    if (user) {
+      // Update existing profile
+      user.name = name;
+      user.role = role;
+      user.pincode = pincode;
+      user.address = address;
+      user.businessName = businessName;
+      user.businessLicense = businessLicense;
+      await user.save();
+    } else {
+      // Create new user
+      user = new User({
+        name,
+        phone,
+        role,
+        pincode,
+        address,
+        businessName,
+        businessLicense,
+        isVerified: true,
+      });
+      await user.save();
+    }
 
-    const newUser = new User({ name, email, password: hashed, role });
-    await newUser.save();
+    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
 
-    res.status(201).json({ msg: "User registered successfully" });
+    res.status(201).json({
+      msg: "Profile completed",
+      token,
+      user: {
+        name: user.name,
+        phone: user.phone,
+        role: user.role,
+        id: user._id,
+      },
+    });
   } catch (err) {
     res.status(500).json({ msg: "Server error", error: err.message });
   }
 };
 
-// Login
-export const loginUser = async (req, res) => {
-  const { email, password } = req.body;
+
+
+
+export const getMe = async (req, res) => {
   try {
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ msg: "User not found" });
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
-
-    const token = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    res.json({ token, user: { name: user.name, role: user.role, email: user.email ,id:user._id} });
+    const user = req.user; // populated by authMiddleware
+    res.status(200).json({ user });
   } catch (err) {
     res.status(500).json({ msg: "Server error", error: err.message });
   }
 };
+
+
+
+
+
+

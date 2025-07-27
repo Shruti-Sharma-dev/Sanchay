@@ -59,25 +59,33 @@ export const getNearbyProducts = async (req, res) => {
       return res.status(400).json({ msg: "Latitude and longitude are required" });
     }
 
-    // Convert to float
     const latitude = parseFloat(lat);
     const longitude = parseFloat(lng);
     const searchQuery = q?.toLowerCase() || "";
 
-    // Step 1: Find suppliers within the radius
-    const suppliers = await SupplierProfile.find();
+    // Step 1: Fetch all suppliers (you can optimize later with geo queries)
+    const suppliers = await SupplierProfile.find().populate("user");
 
     const nearbySupplierIds = suppliers
       .filter(s => {
-        if (!s.deliveryRadius || !s.address) return false;
+        if (!s.deliveryRadius || !s.location || !s.location.coordinates) return false;
 
-        // Dummy distance calc: You can integrate real Haversine or use GeoJSON in future
-        const dist = Math.sqrt((s.lat - latitude) ** 2 + (s.lng - longitude) ** 2);
-        return dist <= s.deliveryRadius;
+        const [supplierLng, supplierLat] = s.location.coordinates;
+
+        // Rough distance approximation (better: use Haversine)
+        const dist = Math.sqrt(
+          Math.pow(supplierLat - latitude, 2) +
+          Math.pow(supplierLng - longitude, 2)
+        );
+
+        // Assume 1 unit = ~111km for small-scale test (approximation)
+        const distanceInKm = dist * 111;
+
+        return distanceInKm <= s.deliveryRadius;
       })
-      .map(s => s.user); // supplier's user ID
+      .map(s => s.user); // get user IDs of suppliers
 
-    // Step 2: Filter products from those suppliers
+    // Step 2: Get products from those nearby suppliers
     const products = await Product.find({
       supplier: { $in: nearbySupplierIds },
       name: { $regex: searchQuery, $options: "i" }
